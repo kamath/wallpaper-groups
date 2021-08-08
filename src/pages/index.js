@@ -4,9 +4,7 @@ import { Link } from "gatsby"
 import Layout from "../components/layout"
 import Seo from "../components/seo"
 
-// const rotate = (path, deg, x, y) => <g transform={`rotate(${deg} ${x} ${y})`}>{path}</g>;
-// const halfturn = (path, x, y) => rotate(path, 180, x, y);
-
+// SVG dimensions
 const SVG_DIM = {
 	minX: -50,
 	maxX: 50,
@@ -14,13 +12,34 @@ const SVG_DIM = {
 	maxY: 50
 }
 
+// Translations 1 and 2
 const T1 = SVG_DIM.maxX - SVG_DIM.minX;
 const T2 = SVG_DIM.maxY - SVG_DIM.minY;
 
+// Colors
+const FILLS = ["#DE6B48", "#E5B181", "#F4B9B2", "#DAEDBD", "#7DBBC3", "#553E4E", "#5D576B", "#6CD4FF", "#3F292B", "#2B303A"]
+
+// Scale ViewBox
+const scale = 3;
+
 const rad = theta => theta * (Math.PI/180);
 
+// Translate a point (x, y) by (dx, dy) units
+const translate = (x, y, relative, dx, dy) => {
+	if(relative) return [x, y];
+	return [x + dx, y + dy];
+}
+
+// Glide reflection by doing translateFunc(reflectFunc(x, y))
+// i.e. reflection followed by translation
+const glide = (x, y, relative, translateFunc, reflectFunc) => {
+	const [xt, yt] = reflectFunc(x, y, relative);
+	return translateFunc(xt, yt, relative);
+}
+
 // Rotate a point (x, y) about (h, k) by deg degrees
-const rotate = (x, y, h, k, deg) => {
+const rotate = (x, y, relative, h, k, deg) => {
+	if(relative) [h, k] = [0, 0]
 	const theta = rad(deg);
 	const r = h * (1 - Math.cos(theta)) + k * Math.sin(theta);
 	const s = -h * Math.sin(theta) + k * (1 - Math.cos(theta));
@@ -30,23 +49,23 @@ const rotate = (x, y, h, k, deg) => {
 }
 
 // Reflect a point (x, y) in the line ax + by + c
-const reflect = (x, y, a, b, c) => {
-	y = y;
-
+const reflect = (x, y, relative, a, b, c) => {
+	// Equations for normal line
+	// const a0 = b;
+	// const b0 = -a * b;
+	// const c0 = relative ? 0 : -c * a;
+	// [a, b, c] = [a0, b0, c0];
+	c = relative ? 0 : c;
 	const sum_squares = a * a + b * b;
 	const new_pos = a * x + b * y + c;
 	const ratio = 2 * new_pos / sum_squares
 	return [x - a * ratio, y - b * ratio];
 }
 
-// Transforms a point such that higher y means upwards, not downwards
-const positiveY = (x, y) => {
-	return [x, SVG_DIM.maxY - y];
-}
-
-
+// Applies a given transform with arguments (x, y, relative) -> [x0, y0] to a path
 const applyTransform = (pathD, transform) => pathD.split(/(?=[LMCHVSQTAZlmchvsqtaz])/).map(d => {
 	const getTransformed = (op, path) => {
+		const relative = op.toLowerCase() === op;
 		switch(op) {
 			case "z":
 			case "Z":
@@ -54,20 +73,20 @@ const applyTransform = (pathD, transform) => pathD.split(/(?=[LMCHVSQTAZlmchvsqt
 			case "c":
 			case "C":
 				console.assert(path.length === 6, "C/c command must only have 6 values");
-				return transform(path[0], path[1]).concat(transform(path[2], path[3])).concat(transform(path[4], path[5]));
+				return transform(path[0], path[1], relative).concat(transform(path[2], path[3], relative)).concat(transform(path[4], path[5], relative));
 			case "q":
 			case "Q":
 				console.assert(path.length === 4, "Q/q command must only have 4 values");
-				return transform(path[0], path[1]).concat(transform(path[2], path[3]));
+				return transform(path[0], path[1], relative).concat(transform(path[2], path[3], relative));
 			case "a":
 			case "A":
 				console.assert(path.length === 7, "A/a command must only have 6 values");
 				const [rx, ry, x_axis_rot, large_arc, sweep, x, y] = path;
-				const [x0, y0] = transform(x, y);
+				const [x0, y0] = transform(x, y, relative);
 				return [rx, ry, x_axis_rot, large_arc, sweep, x0, y0];
 			default:
 				console.assert(path.length === 2, "Point commands must only have 2 values");
-				return transform(path[0], path[1]);
+				return transform(path[0], path[1], relative);
 		}
 	}
 
@@ -81,19 +100,38 @@ const applyTransform = (pathD, transform) => pathD.split(/(?=[LMCHVSQTAZlmchvsqt
 	return op + transformedString;
 }).join(" ")
 
-const defaultPath = `M20,10l6,-7l3,-1l-1,3l-7,6c1,1,1,2,2,1c0,1,1,2,0,2a1.42,1.42,0,0,1,-1,1a5,5,0,0,0,-2,-3q-0.5,-0.1,-0.5,0.5t-1.5,1.3t-0.8,-0.8t1.3,-1.5t0.5,-0.5a5,5,90,0,0,-3,-2a1.42,1.42,0,0,1,1,-1c0,-1,1,0,2,0c-1,1,0,1,1,2m6,-7l0,2l2,0l-1.8,-0.2l-0.2,-1.8z`
+const defaultPath = `M10,25l6,-7l3,-1l-1,3l-7,6c1,1,1,2,2,1c0,1,1,2,0,2a1.42,1.42,0,0,1,-1,1a5,5,0,0,0,-2,-3q-0.5,-0.1,-0.5,0.5t-1.5,1.3t-0.8,-0.8t1.3,-1.5t0.5,-0.5a5,5,90,0,0,-3,-2a1.42,1.42,0,0,1,1,-1c0,-1,1,0,2,0c-1,1,0,1,1,2m6,-7l0,2l2,0l-1.8,-0.2l-0.2,-1.8z`
 // const defaultPath = `M20,10L26,3L29,2L28,5L21,11C22,12,22,13,23,12C23,13,24,14,23,14A1.42,1.42,0,0,1,22,15A5,5,0,0,0,20,12Q19.5,11.9,19.5,12.5T18,13.8T17.2,13T18.5,11.5T19,11A5,5,90,0,0,16,9A1.42,1.42,0,0,1,17,8C17,7,18,8,19,8C18,9,19,9,20,10M26,3L26,5L28,5L26.2,4.8L26,3Z`
 
-const Motif = ({x = 60, y = 10, group = 'cm_downdiagonal', pathD = defaultPath, fill="grey", stroke="grey", strokeWidth=.5, transforms=[]}) => {
-	let paths = [];
-	const FILLS = ["red", "orange", "yellow", "green", "blue", "indigo", "violet"]
+const Motif = ({group = 'cm_downdiagonal', pathD = defaultPath, fill="grey", stroke="grey", strokeWidth=.5, transforms=[], animate=false}) => {
+	// P1 Group (only translations)
+	const translations = [
+		// Identity
+		(x, y, relative) => translate(x, y, relative, 0, 0),
+		// Top Left
+		(x, y, relative) => translate(x, y, relative, -T1, -T2),
+		// Top
+		(x, y, relative) => translate(x, y, relative, 0, -T2),
+		// Top Right
+		(x, y, relative) => translate(x, y, relative, T1, -T2),
+		// Right
+		(x, y, relative) => translate(x, y, relative, T1, 0),
+		// Bottom Right
+		(x, y, relative) => translate(x, y, relative, T1, T2),
+		// Bottom
+		(x, y, relative) => translate(x, y, relative, 0, T2),
+		// Bottom Left
+		(x, y, relative) => translate(x, y, relative, -T1, T2),
+		// Left
+		(x, y, relative) => translate(x, y, relative, -T1, 0),
+	]
 
-	// let path = <path d={applyTransform(pathD, positivePath)} fill={fill} strokeWidth={strokeWidth} stroke={stroke}></path>;
-	let path = <path d={pathD} fill={fill} strokeWidth={strokeWidth} stroke={stroke}></path>;
-	paths = [path].concat(transforms.map((transform, i) => 
-		<path d={applyTransform(pathD, transform)} fill={FILLS[i % FILLS.length]} strokeWidth={strokeWidth} stroke={FILLS[i % FILLS.length]} />))
-
-	return <>{paths.map((x, i) => <g key={i} transformID={i}>{x}</g>)}</>;
+	let tor = [];
+	[pathD].concat(transforms.map((transform) => applyTransform(pathD, transform)))
+		.forEach(g => translations.forEach(translation => tor.push(applyTransform(g, translation))))
+	return tor.map((x, i) => <g key={i} transformID={i}><path d={x} strokeWidth={strokeWidth} stroke={FILLS[i % FILLS.length]}>
+		{/* {animate && <animate attributeName="d" values={`${pathD};${x}`} dur="10s" repeatCount="freeze" begin={i == 0 ? "0s" : "1s"}/>} */}
+		</path></g>)
 }
 
 const IndexPage = () => {
@@ -105,17 +143,100 @@ const IndexPage = () => {
 	const R = 1;
 
 	// Halfturn about origin
-	const halfturnOp = (x, y) => rotate(x, y, h, k, 180);
+	const halfturnOp = (x, y, relative) => rotate(x, y, relative, h, k, 180);
 	// Reflect across y-axis
-	const reflectY = (x, y) => reflect(x, y, 1, 0, 0);
+	const reflectY = (x, y, relative) => reflect(x, y, relative, 1, 0, 0);
 	// Reflect across x-axis
-	const reflectX = (x, y) => reflect(x, y, 0, 1, 0);
+	const reflectX = (x, y, relative) => reflect(x, y, relative, 0, 1, 0);
 	// Reflect across y = x - 50 -> x - y - 50 = 0
-	const reflectYEqX = (x, y) => reflect(x, y, 1, -1, 0);
+	const reflectYEqX = (x, y, relative) => reflect(x, y, relative, 1, -1, 0);
 	// Reflect across y = -x - 50 -> x + y + 50 = 0
-	const reflectYEqNegX = (x, y) => reflect(x, y, 1, 1, 0);
+	const reflectYEqNegX = (x, y, relative) => reflect(x, y, relative, 1, 1, 0);
 
-	const getLine = (a, b, c) => `M ${SVG_DIM.minX} ${-(a*SVG_DIM.minX + c)/b} L ${SVG_DIM.maxX} ${-(a*SVG_DIM.maxX + c)/b}`;
+	const glideHorizontal = (x, y, relative) => glide(x, y, relative, (x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, 0), reflectX)
+	const glideVertical = (x, y, relative) => glide(x, y, relative, (x, y, relative) => translate(x, y, relative, 0, SVG_DIM.maxY - T2), reflectY)
+	const glideHalfVert = (x, y, relative) => glide(x, y, relative, (x, y, relative) => translate(x, y, relative, 0, SVG_DIM.maxY - T2), 
+			(x, y, relative) => reflect(x, y, relative, 1, 0, -T2/4))
+
+	const getLine = (a, b, c, xStart=SVG_DIM.minX, xFin=SVG_DIM.maxX) => `M ${xStart} ${-(a*xStart + c)/b} L ${xFin} ${-(a*xFin + c)/b}`;
+
+	const groups = {
+		p1: [],
+		p2: [
+			(x, y, relative) => rotate(x, y, relative, -T1/2, -T2/2, 180), // Top Left
+			(x, y, relative) => rotate(x, y, relative, 0, -T2/2, 180), // Top
+			(x, y, relative) => rotate(x, y, relative, T1/2, -T2/2, 180), // Top Right
+			(x, y, relative) => rotate(x, y, relative, -T1/2, 0, 180), // Left
+			(x, y, relative) => rotate(x, y, relative, 0, 0, 180), // Center
+			(x, y, relative) => rotate(x, y, relative, T1/2, 0, 180), // Right
+			(x, y, relative) => rotate(x, y, relative, -T1/2, T2/2, 180), // Bottom Left
+			(x, y, relative) => rotate(x, y, relative, 0, T2/2, 180), // Bottom
+			(x, y, relative) => rotate(x, y, relative, T1/2, T2/2, 180), // Bottom Right
+		],
+		pm: [
+			(x, y, relative) => reflect(x, y, relative, 0, 1, -T2/2), // Top
+			(x, y, relative) => reflect(x, y, relative, 0, 1, 0), // Center
+			(x, y, relative) => reflect(x, y, relative, 0, 1, T2/2), // Bottom
+		],
+		// pm_horizontal: [reflectX],
+		// pm_vertical: [reflectY],
+		// pg_horizontal: [glideHorizontal],
+		// pg_vertical: [glideVertical],
+		pg: [
+			(x, y, relative) => glide(x, y, relative, 
+				(x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, SVG_DIM.maxY - T2), 
+				(x, y, relative) => reflect(x, y, relative, 0, 1, -T2/2)), // Top
+			(x, y, relative) => glide(x, y, relative, 
+				(x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, SVG_DIM.maxY - T2), 
+				(x, y, relative) => reflect(x, y, relative, 0, 1, 0)), // Center
+			(x, y, relative) => glide(x, y, relative, 
+				(x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, SVG_DIM.maxY - T2), 
+				(x, y, relative) => reflect(x, y, relative, 0, 1, T2/2)) // Bottom
+		],
+		cm: [
+			(x, y, relative) => glide(x, y, relative, 
+				(x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, SVG_DIM.maxY - T2), 
+				(x, y, relative) => reflect(x, y, relative, 0, 1, T2/4)), // Top middle
+			(x, y, relative) => reflect(x, y, relative, 0, 1, 0), // Middle
+			(x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, 0), // Middle translation
+			(x, y, relative) => glide(x, y, relative, 
+					(x, y, relative) => translate(x, y, relative, SVG_DIM.maxX - T1, SVG_DIM.maxY - T2), 
+					(x, y, relative) => reflect(x, y, relative, 0, 1, -T2/4)), // Bottom middle
+		],
+		pmm: [
+			(x, y, relative) => rotate(x, y, relative, -T1/2, -T2/2, 180), // Top Left
+			(x, y, relative) => rotate(x, y, relative, 0, -T2/2, 180), // Top
+			(x, y, relative) => rotate(x, y, relative, T1/2, -T2/2, 180), // Top Right
+			(x, y, relative) => rotate(x, y, relative, -T1/2, 0, 180), // Left
+			(x, y, relative) => rotate(x, y, relative, 0, 0, 180), // Center
+			(x, y, relative) => rotate(x, y, relative, T1/2, 0, 180), // Right
+			(x, y, relative) => rotate(x, y, relative, -T1/2, T2/2, 180), // Bottom Left
+			(x, y, relative) => rotate(x, y, relative, 0, T2/2, 180), // Bottom
+			(x, y, relative) => rotate(x, y, relative, T1/2, T2/2, 180), // Bottom Right
+			(x, y, relative) => reflect(x, y, relative, 0, 1, -T2/2), // Top
+			(x, y, relative) => reflect(x, y, relative, 0, 1, 0), // Center horizontal
+			(x, y, relative) => reflect(x, y, relative, 0, 1, T2/2), // Bottom
+			(x, y, relative) => reflect(x, y, relative, 1, 0, -T1/2), // Left
+			(x, y, relative) => reflect(x, y, relative, 1, 0, 0), // Center vertical
+			(x, y, relative) => reflect(x, y, relative, 1, 0, T1/2), // Right
+		],
+		pmg: [
+			(x, y, relative) => rotate(x, y, relative, -T1/2, -T2/2, 180), // Top Left
+			(x, y, relative) => rotate(x, y, relative, 0, -T2/2, 180), // Top
+			(x, y, relative) => rotate(x, y, relative, T1/2, -T2/2, 180), // Top Right
+			(x, y, relative) => rotate(x, y, relative, -T1/2, 0, 180), // Left
+			(x, y, relative) => rotate(x, y, relative, 0, 0, 180), // Center
+			(x, y, relative) => rotate(x, y, relative, T1/2, 0, 180), // Right
+			(x, y, relative) => rotate(x, y, relative, -T1/2, T2/2, 180), // Bottom Left
+			(x, y, relative) => rotate(x, y, relative, 0, T2/2, 180), // Bottom
+			(x, y, relative) => rotate(x, y, relative, T1/2, T2/2, 180), // Bottom Right
+			// (x, y, relative) => reflect(x, y, relative, 0, 1, -T2/4), // Top Half
+			(x, y, relative) => reflect(x, y, relative, 0, 1, T2/4), // Bottom Half
+		],
+	}
+
+	const wip = "pmg";
+
 
 	return <Layout>
 		<Seo title="Home" />
@@ -123,21 +244,27 @@ const IndexPage = () => {
 		<p>Welcome to your new Gatsby site.</p>
 		<p>Now go build something great.</p>
 
-		<svg viewBox={`${SVG_DIM.minX * 3} ${SVG_DIM.minY * 3} ${T1 * 3} ${T2 * 3}`} width="50%">
+		<svg viewBox={`${SVG_DIM.minX * scale} ${SVG_DIM.minY * scale} ${T1 * scale} ${T2 * scale}`} width="50%">
+			{/* Top Left */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX * 3} y={SVG_DIM.minY * 3}></rect>
+			{/* Left */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX * 3} y={SVG_DIM.minY}></rect>
+			{/* Bottom Left */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX * 3} y={SVG_DIM.minY * -1}></rect>
+			{/* Bottom */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX} y={SVG_DIM.minY * -1}></rect>
+			{/* Bottom Right */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX * -1} y={SVG_DIM.minY * -1}></rect>
+			{/* Right */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX * -1} y={SVG_DIM.minY}></rect>
+			{/* Top Right */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX * -1} y={SVG_DIM.minY * 3}></rect>
+			{/* Top */}
+			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX} y={SVG_DIM.minY * 3}></rect>
+
 			<rect height="100" width="100" stroke="grey" strokeWidth=".5" fill="white" x={SVG_DIM.minX} y={SVG_DIM.minY}></rect>
 			<g id="Sword">
-				<Motif transforms={[
-					// (x, y) => rotate(x, y, h, k, 60),
-					// (x, y) => rotate(x, y, h, k, 120),
-					// (x, y) => rotate(x, y, h, k, 180),
-					// (x, y) => rotate(x, y, h, k, 240),
-					// (x, y) => rotate(x, y, h, k, 300),
-					halfturnOp,
-					reflectY,
-					reflectX,
-					reflectYEqX,
-					reflectYEqNegX
-				]} strokeWidth={0}/>
+				<Motif transforms={groups[wip]} strokeWidth={0} animate={true}/>
 			</g>
 			<g id="y=x">
 				<Motif pathD={getLine(-1, 1, 0)} transforms={[]} />
@@ -148,18 +275,21 @@ const IndexPage = () => {
 			<g id="xaxis">
 				<Motif pathD={getLine(0, 1, 0)} transforms={[]} />
 			</g>
+			<g id="xaxisTopHalf">
+				<Motif pathD={getLine(0, 1, T1/4)} transforms={[]} />
+			</g>
+			<g id="xaxisBottomHalf">
+				<Motif pathD={getLine(0, 1, -T1/4)} transforms={[]} />
+			</g>
 			<g id="yaxis">
 				<Motif pathD={`M ${(SVG_DIM.maxX + SVG_DIM.minX) / 2} ${SVG_DIM.minY} L${(SVG_DIM.maxX + SVG_DIM.minX) / 2} ${SVG_DIM.maxY}`} transforms={[]} />
 			</g>
-			<g id="circle">
-				<Motif pathD={`M29,20A1,1,0,1,0,31,20A1,1,0,1,0,29,20`} strokeWidth={0} transforms={[
-					reflectX,
-					reflectY,
-					reflectYEqX,
-					reflectYEqNegX
-				]} />
+			<g id="yaxisLeftHalf">
+				<Motif pathD={`M ${-T1/4} ${SVG_DIM.minY} L${-T1/4} ${SVG_DIM.maxY}`} transforms={[]} />
 			</g>
-			<circle cx={h} cy={k} r={1} fill="red" />
+			<g id="yaxisRightHalf">
+				<Motif pathD={`M ${T1/4} ${SVG_DIM.minY} L${T1/4} ${SVG_DIM.maxY}`} transforms={[]} />
+			</g>
 		</svg>
 	
 		<p>
